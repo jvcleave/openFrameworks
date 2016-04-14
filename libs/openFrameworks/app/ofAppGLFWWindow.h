@@ -94,6 +94,7 @@ public:
     
     GLFWwindow* getGLFWWindow();
     void * getWindowContext(){return getGLFWWindow();}
+	ofGLFWWindowSettings getSettings(){ return settings; }
 
 	ofVec3f		getWindowSize();
 	ofVec3f		getScreenSize();
@@ -122,6 +123,9 @@ public:
     int         getPixelScreenCoordScale();
 
     void 		makeCurrent();
+	void swapBuffers();
+	void startRender();
+	void finishRender();
 
 	static void listVideoModes();
 	static void listMonitors();
@@ -131,6 +135,7 @@ public:
 	void iconify(bool bIconify);
 
 	// window settings, this functions can only be called from main before calling ofSetupOpenGL
+	// TODO: remove specialized version of ofSetupOpenGL when these go away
 	OF_DEPRECATED_MSG("use ofGLFWWindowSettings to create the window instead", void setNumSamples(int samples));
 	OF_DEPRECATED_MSG("use ofGLFWWindowSettings to create the window instead", void setDoubleBuffering(bool doubleBuff));
 	OF_DEPRECATED_MSG("use ofGLFWWindowSettings to create the window instead", void setColorBits(int r, int g, int b));
@@ -188,12 +193,10 @@ private:
 	ofWindowMode	windowMode;
 
 	bool			bEnableSetupScreen;
-	int				windowW, windowH;
+	int				windowW, windowH;		// physical pixels width
+	int				currentW, currentH;		// scaled pixels width
 
-#ifdef TARGET_OSX
-	/// saved window shape before fullscreen
 	ofRectangle windowRect;
-#endif
 
 	int				buttonInUse;
 	bool			buttonPressed;
@@ -202,7 +205,7 @@ private:
 	bool			bWindowNeedsShowing;
 
 	GLFWwindow* 	windowP;
-    
+
 	int				getCurrentMonitor();
 
 	ofBaseApp *	ofAppPtr;
