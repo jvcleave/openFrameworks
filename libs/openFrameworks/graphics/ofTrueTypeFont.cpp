@@ -19,6 +19,7 @@
 #include "ofGraphics.h"
 #include "ofAppRunner.h"
 #include "utf8.h"
+#include "ofVectorMath.h"
 
 
 const ofUnicode::range ofUnicode::Space {32, 32};
@@ -152,7 +153,9 @@ static FT_Library library;
 //--------------------------------------------------------
 void ofTrueTypeShutdown(){
 #ifdef TARGET_LINUX
-	FcFini();
+	// This crashes if gtk was called at any time cause pango leaks
+	// its fc related objects: https://github.com/openframeworks/openFrameworks/issues/5061
+	//FcFini();
 #endif
 }
 
@@ -168,6 +171,7 @@ static ofTTFCharacter makeContoursForCharacter(FT_Face face){
 
 		ofTTFCharacter charOutlines;
 		charOutlines.setUseShapeColor(false);
+		charOutlines.setPolyWindingMode(OF_POLY_WINDING_NONZERO);
 
 		for(int k = 0; k < nContours; k++){
 			if( k > 0 ){
@@ -180,12 +184,12 @@ static ofTTFCharacter makeContoursForCharacter(FT_Face face){
 			}
 
 			//vector <ofPoint> testOutline;
-			ofPoint lastPoint;
+			glm::vec3 lastPoint;
 
 			for(int j = startPos; j < endPos; j++){
 
 				if( FT_CURVE_TAG(tags[j]) == FT_CURVE_TAG_ON ){
-					lastPoint.set((float)vec[j].x, (float)-vec[j].y, 0);
+					lastPoint = {(float)vec[j].x, (float)-vec[j].y, 0.f};
 					if(printVectorInfo){
 						ofLogNotice("ofTrueTypeFont") << "flag[" << j << "] is set to 1 - regular point - " << lastPoint.x <<  lastPoint.y;
 					}
@@ -211,15 +215,15 @@ static ofTTFCharacter makeContoursForCharacter(FT_Face face){
 							nextIndex = startPos;
 						}
 
-						ofPoint nextPoint( (float)vec[nextIndex].x,  -(float)vec[nextIndex].y );
+						glm::vec3 nextPoint( (float)vec[nextIndex].x,  -(float)vec[nextIndex].y, 0.f );
 
 						//we need two control points to draw a cubic bezier
 						bool lastPointCubic =  ( FT_CURVE_TAG(tags[prevPoint]) != FT_CURVE_TAG_ON ) && ( FT_CURVE_TAG(tags[prevPoint]) == FT_CURVE_TAG_CUBIC);
 
 						if( lastPointCubic ){
-							ofPoint controlPoint1((float)vec[prevPoint].x,	(float)-vec[prevPoint].y);
-							ofPoint controlPoint2((float)vec[j].x, (float)-vec[j].y);
-							ofPoint nextPoint((float) vec[nextIndex].x,	-(float) vec[nextIndex].y);
+							glm::vec3 controlPoint1((float)vec[prevPoint].x,	(float)-vec[prevPoint].y, 0.f);
+							glm::vec3 controlPoint2((float)vec[j].x, (float)-vec[j].y, 0.f);
+							glm::vec3 nextPoint((float) vec[nextIndex].x,	-(float) vec[nextIndex].y, 0.f);
 
 							//cubic_bezier(testOutline, lastPoint.x, lastPoint.y, controlPoint1.x, controlPoint1.y, controlPoint2.x, controlPoint2.y, nextPoint.x, nextPoint.y, 8);
 							charOutlines.bezierTo(controlPoint1.x/64, controlPoint1.y/64, controlPoint2.x/64, controlPoint2.y/64, nextPoint.x/64, nextPoint.y/64);
@@ -227,7 +231,7 @@ static ofTTFCharacter makeContoursForCharacter(FT_Face face){
 
 					}else{
 
-						ofPoint conicPoint( (float)vec[j].x,  -(float)vec[j].y );
+						glm::vec3 conicPoint( (float)vec[j].x,  -(float)vec[j].y, 0.f );
 
 						if(printVectorInfo){
 							ofLogNotice("ofTrueTypeFont") << "- bit 2 is set to 0 - conic- ";
@@ -239,7 +243,7 @@ static ofTTFCharacter makeContoursForCharacter(FT_Face face){
 							bool prevIsConnic = (  FT_CURVE_TAG( tags[endPos-1] ) != FT_CURVE_TAG_ON ) && ( FT_CURVE_TAG( tags[endPos-1]) != FT_CURVE_TAG_CUBIC );
 
 							if( prevIsConnic ){
-								ofPoint lastConnic((float)vec[endPos - 1].x, (float)-vec[endPos - 1].y);
+								glm::vec3 lastConnic((float)vec[endPos - 1].x, (float)-vec[endPos - 1].y, 0.f);
 								lastPoint = (conicPoint + lastConnic) / 2;
 
 								if(printVectorInfo){
@@ -256,7 +260,7 @@ static ofTTFCharacter makeContoursForCharacter(FT_Face face){
 							nextIndex = startPos;
 						}
 
-						ofPoint nextPoint( (float)vec[nextIndex].x,  -(float)vec[nextIndex].y );
+						glm::vec3 nextPoint( (float)vec[nextIndex].x,  -(float)vec[nextIndex].y, 0.f );
 
 						if(printVectorInfo){
 							ofLogNotice("ofTrueTypeFont") << "--- last point is " << lastPoint.x << " " <<  lastPoint.y;
@@ -438,13 +442,13 @@ static std::string linuxFontPathByName(const std::string& fontname){
 #endif
 
 //-----------------------------------------------------------
-static bool loadFontFace(string fontname, int _fontSize, FT_Face & face, string & filename){
+static bool loadFontFace(std::filesystem::path fontname, FT_Face & face, std::filesystem::path & filename){
 	filename = ofToDataPath(fontname,true);
 	ofFile fontFile(filename,ofFile::Reference);
 	int fontID = 0;
 	if(!fontFile.exists()){
 #ifdef TARGET_LINUX
-		filename = linuxFontPathByName(fontname);
+        filename = linuxFontPathByName(fontname.string());
 #elif defined(TARGET_OSX)
 		if(fontname==OF_TTF_SANS){
 			fontname = "Helvetica Neue";
@@ -454,7 +458,7 @@ static bool loadFontFace(string fontname, int _fontSize, FT_Face & face, string 
 		}else if(fontname==OF_TTF_MONO){
 			fontname = "Menlo Regular";
 		}
-		filename = osxFontPathByName(fontname);
+        filename = osxFontPathByName(fontname.string());
 #elif defined(TARGET_WIN32)
 		if(fontname==OF_TTF_SANS){
 			fontname = "Arial";
@@ -463,7 +467,7 @@ static bool loadFontFace(string fontname, int _fontSize, FT_Face & face, string 
 		}else if(fontname==OF_TTF_MONO){
 			fontname = "Courier New";
 		}
-		filename = winFontPathByName(fontname);
+        filename = winFontPathByName(fontname.string());
 #endif
 		if(filename == "" ){
 			ofLogError("ofTrueTypeFont") << "loadFontFace(): couldn't find font \"" << fontname << "\"";
@@ -472,7 +476,7 @@ static bool loadFontFace(string fontname, int _fontSize, FT_Face & face, string 
 		ofLogVerbose("ofTrueTypeFont") << "loadFontFace(): \"" << fontname << "\" not a file in data loading system font from \"" << filename << "\"";
 	}
 	FT_Error err;
-	err = FT_New_Face( library, filename.c_str(), fontID, &face );
+    err = FT_New_Face( library, filename.string().c_str(), fontID, &face );
 	if (err) {
 		// simple error table in lieu of full table (see fterrors.h)
 		string errorString = "unknown freetype";
@@ -524,7 +528,7 @@ ofTrueTypeFont::ofTrueTypeFont()
 :settings("",0){
 	bLoadedOk		= false;
 	letterSpacing = 1;
-	spaceSize = 0;
+	spaceSize = 1;
 	fontUnitScale = 1;
 	stringQuads.setMode(OF_PRIMITIVE_TRIANGLES);
 	ascenderHeight = 0;
@@ -562,8 +566,11 @@ ofTrueTypeFont::ofTrueTypeFont(const ofTrueTypeFont& mom)
 	glyphBBox = mom.glyphBBox;
 	letterSpacing = mom.letterSpacing;
 	spaceSize = mom.spaceSize;
+	fontUnitScale = mom.fontUnitScale;
 
 	cps = mom.cps; // properties for each character
+	settings = mom.settings;
+	glyphIndexMap = mom.glyphIndexMap;
 	texAtlas = mom.texAtlas;
 	face = mom.face;
 }
@@ -579,6 +586,7 @@ ofTrueTypeFont & ofTrueTypeFont::operator=(const ofTrueTypeFont& mom){
 #endif
 	settings = mom.settings;
 	bLoadedOk = mom.bLoadedOk;
+
 	charOutlines = mom.charOutlines;
 	charOutlinesNonVFlipped = mom.charOutlinesNonVFlipped;
 	charOutlinesContour = mom.charOutlinesContour;
@@ -590,11 +598,14 @@ ofTrueTypeFont & ofTrueTypeFont::operator=(const ofTrueTypeFont& mom){
 	glyphBBox = mom.glyphBBox;
 	letterSpacing = mom.letterSpacing;
 	spaceSize = mom.spaceSize;
+	fontUnitScale = mom.fontUnitScale;
 
 	cps = mom.cps; // properties for each character
-
+	settings = mom.settings;
+	glyphIndexMap = mom.glyphIndexMap;
 	texAtlas = mom.texAtlas;
 	face = mom.face;
+
 	return *this;
 }
 
@@ -620,8 +631,11 @@ ofTrueTypeFont::ofTrueTypeFont(ofTrueTypeFont&& mom)
 	glyphBBox = mom.glyphBBox;
 	letterSpacing = mom.letterSpacing;
 	spaceSize = mom.spaceSize;
+	fontUnitScale = mom.fontUnitScale;
 
 	cps = mom.cps; // properties for each character
+	settings = mom.settings;
+	glyphIndexMap = std::move(mom.glyphIndexMap);
 	texAtlas = mom.texAtlas;
 	face = mom.face;
 }
@@ -635,7 +649,6 @@ ofTrueTypeFont & ofTrueTypeFont::operator=(ofTrueTypeFont&& mom){
 		ofAddListener(ofxAndroidEvents().reloadGL,this,&ofTrueTypeFont::reloadTextures);
 	}
 #endif
-	settings = mom.settings;
 	bLoadedOk = mom.bLoadedOk;
 
 	charOutlines = std::move(mom.charOutlines);
@@ -649,9 +662,11 @@ ofTrueTypeFont & ofTrueTypeFont::operator=(ofTrueTypeFont&& mom){
 	glyphBBox = mom.glyphBBox;
 	letterSpacing = mom.letterSpacing;
 	spaceSize = mom.spaceSize;
+	fontUnitScale = mom.fontUnitScale;
 
 	cps = mom.cps; // properties for each character
-
+	settings = mom.settings;
+	glyphIndexMap = std::move(mom.glyphIndexMap);
 	texAtlas = mom.texAtlas;
 	face = mom.face;
 	return *this;
@@ -745,7 +760,7 @@ ofTrueTypeFont::glyph ofTrueTypeFont::loadGlyph(uint32_t utf8) const{
 }
 
 //-----------------------------------------------------------
-bool ofTrueTypeFont::load(string filename, int fontSize, bool antialiased, bool fullCharacterSet, bool makeContours, float simplifyAmt, int dpi) {
+bool ofTrueTypeFont::load(std::filesystem::path filename, int fontSize, bool antialiased, bool fullCharacterSet, bool makeContours, float simplifyAmt, int dpi) {
 	ofTtfSettings settings(filename,fontSize);
 	settings.antialiased = antialiased;
 	settings.contours = makeContours;
@@ -775,7 +790,7 @@ bool ofTrueTypeFont::load(const ofTtfSettings & _settings){
 
 	//--------------- load the library and typeface
 	FT_Face loadFace;
-	if(!loadFontFace(settings.fontName,settings.fontSize,loadFace,settings.fontName)){
+    if(!loadFontFace(settings.fontName, loadFace, settings.fontName)){
 		return false;
 	}
 	face = std::shared_ptr<struct FT_FaceRec_>(loadFace,FT_Done_Face);
@@ -839,7 +854,7 @@ bool ofTrueTypeFont::load(const ofTtfSettings & _settings){
 				charOutlinesContour[i].setStrokeWidth(1);
 
 				charOutlinesNonVFlipped[i] = charOutlines[i];
-				charOutlinesNonVFlipped[i].translate(ofVec3f(0,cps[i].height));
+				charOutlinesNonVFlipped[i].translate({0,cps[i].height,0.f});
 				charOutlinesNonVFlipped[i].scale(1,-1);
 				charOutlinesNonVFlippedContour[i] = charOutlines[i];
 				charOutlinesNonVFlippedContour[i].setFilled(false);
@@ -1056,15 +1071,15 @@ void ofTrueTypeFont::drawChar(uint32_t c, float x, float y, bool vFlipped) const
 
 	ofIndexType firstIndex = stringQuads.getVertices().size();
 
-	stringQuads.addVertex(ofVec3f(xmin,ymin));
-	stringQuads.addVertex(ofVec3f(xmax,ymin));
-	stringQuads.addVertex(ofVec3f(xmax,ymax));
-	stringQuads.addVertex(ofVec3f(xmin,ymax));
+	stringQuads.addVertex(glm::vec3(xmin,ymin,0.f));
+	stringQuads.addVertex(glm::vec3(xmax,ymin,0.f));
+	stringQuads.addVertex(glm::vec3(xmax,ymax,0.f));
+	stringQuads.addVertex(glm::vec3(xmin,ymax,0.f));
 
-	stringQuads.addTexCoord(ofVec2f(t1,v1));
-	stringQuads.addTexCoord(ofVec2f(t2,v1));
-	stringQuads.addTexCoord(ofVec2f(t2,v2));
-	stringQuads.addTexCoord(ofVec2f(t1,v2));
+	stringQuads.addTexCoord(glm::vec2(t1,v1));
+	stringQuads.addTexCoord(glm::vec2(t2,v1));
+	stringQuads.addTexCoord(glm::vec2(t2,v2));
+	stringQuads.addTexCoord(glm::vec2(t1,v2));
 
 	stringQuads.addIndex(firstIndex);
 	stringQuads.addIndex(firstIndex+1);
@@ -1085,8 +1100,8 @@ int ofTrueTypeFont::getKerning(uint32_t c, uint32_t prevC) const{
 	}
 }
 
-void ofTrueTypeFont::iterateString(const string & str, float x, float y, bool vFlipped, std::function<void(uint32_t, ofVec2f)> f) const{
-	ofVec2f pos(x,y);
+void ofTrueTypeFont::iterateString(const string & str, float x, float y, bool vFlipped, std::function<void(uint32_t, glm::vec2)> f) const{
+	glm::vec2 pos(x,y);
 
 	int newLineDirection		= 1;
 	if(!vFlipped){
@@ -1105,16 +1120,24 @@ void ofTrueTypeFont::iterateString(const string & str, float x, float y, bool vF
 				pos.y += lineHeight*newLineDirection;
 				pos.x = x ; //reset X Pos back to zero
 				prevC = 0;
-			}if (c == '\t') {
+			} else if (c == '\t') {
 				pos.x += getGlyphProperties(' ').advance * letterSpacing * 4 * directionX;
+				prevC = c;
+			} else if (c == ' ') {
+				pos.x += getGlyphProperties(' ').advance * letterSpacing * directionX * spaceSize;
 				prevC = c;
 			} else if(isValidGlyph(c)) {
 				const auto & props = getGlyphProperties(c);
 				if(prevC>0){
 					pos.x += getKerning(c,prevC);// * directionX;
 				}
-				f(c,pos);
-				pos.x += props.advance * letterSpacing * directionX;
+				if(settings.direction == ofTtfSettings::LeftToRight){
+				    f(c,pos);
+				    pos.x += props.advance * letterSpacing * directionX;
+				}else{
+				    pos.x += props.advance * letterSpacing * directionX;
+				    f(c,pos);
+				}
 				prevC = c;
 			}
 		}catch(...){
@@ -1136,9 +1159,9 @@ vector<ofTTFCharacter> ofTrueTypeFont::getStringAsPoints(const string &  str, bo
 		ofLogError("ofxTrueTypeFont") << "getStringAsPoints(): font not allocated: line " << __LINE__ << " in " << __FILE__;
 		return shapes;
 	};
-	iterateString(str,0,0,vflip,[&](uint32_t c, ofVec2f pos){
+	iterateString(str,0,0,vflip,[&](uint32_t c, glm::vec2 pos){
 		shapes.push_back(getCharacterAsPoints(c,vflip,filled));
-		shapes.back().translate(pos);
+		shapes.back().translate(glm::vec3{pos, 0.f});
 	});
 	return shapes;
 
@@ -1190,18 +1213,23 @@ float ofTrueTypeFont::stringWidth(const std::string& c) const{
 //-----------------------------------------------------------
 ofRectangle ofTrueTypeFont::getStringBoundingBox(const std::string& c, float x, float y, bool vflip) const{
 	ofMesh mesh = getStringMesh(c,x,y,vflip);
-	ofRectangle bb(std::numeric_limits<float>::max(),std::numeric_limits<float>::max(),0,0);
-	float maxX = std::numeric_limits<float>::min();
-	float maxY = std::numeric_limits<float>::min();
+
+	if(mesh.getNumVertices() == 0)
+	    return ofRectangle(x,y,0,0);
+
+	float minX = std::numeric_limits<float>::max();
+	float minY = std::numeric_limits<float>::max();
+	float maxX = -std::numeric_limits<float>::max();
+	float maxY = -std::numeric_limits<float>::max();
 	for(const auto & v: mesh.getVertices()){
-		bb.x = min(v.x,bb.x);
-		bb.y = min(v.y,bb.y);
+		minX = min(v.x,minX);
+		minY = min(v.y,minY);
 		maxX = max(v.x,maxX);
 		maxY = max(v.y,maxY);
 	}
-	bb.width = maxX - bb.x;
-	bb.height = maxY - bb.y;
-	return bb;
+	float width = maxX - minX;
+	float height = maxY - minY;
+	return ofRectangle(minX, minY, width, height);
 }
 
 //-----------------------------------------------------------
@@ -1212,7 +1240,7 @@ float ofTrueTypeFont::stringHeight(const std::string& c) const{
 
 //-----------------------------------------------------------
 void ofTrueTypeFont::createStringMesh(const std::string& str, float x, float y, bool vflip) const{
-	iterateString(str,x,y,vflip,[&](uint32_t c, ofVec2f pos){
+	iterateString(str,x,y,vflip,[&](uint32_t c, glm::vec2 pos){
 		drawChar(c, pos.x, pos.y, vflip);
 	});
 }
@@ -1230,7 +1258,7 @@ const ofTexture & ofTrueTypeFont::getFontTexture() const{
 }
 
 //-----------------------------------------------------------
-ofVec2f ofTrueTypeFont::getFirstGlyphPosForTexture(const std::string & str, bool vflip) const{
+glm::vec2 ofTrueTypeFont::getFirstGlyphPosForTexture(const std::string & str, bool vflip) const{
 	if(!str.empty()){
 		try{
 			auto c = *ofUTF8Iterator(str).begin();
@@ -1270,7 +1298,7 @@ ofVec2f ofTrueTypeFont::getFirstGlyphPosForTexture(const std::string & str, bool
 //-----------------------------------------------------------
 ofTexture ofTrueTypeFont::getStringTexture(const std::string& str, bool vflip) const{
 	vector<glyph> glyphs;
-	vector<ofVec2f> glyphPositions;
+	vector<glm::vec2> glyphPositions;
 	long height = 0;
 	int width = 0;
 	int lineWidth = 0;
@@ -1338,7 +1366,7 @@ void ofTrueTypeFont::drawStringAsShapes(const std::string& str, float x, float y
 		return;
 	}
 
-	iterateString(str,x,y,true,[&](uint32_t c, ofVec2f pos){
+	iterateString(str,x,y,true,[&](uint32_t c, glm::vec2 pos){
 		drawCharAsShape(c, pos.x, pos.y, ofIsVFlipped(), ofGetStyle().bFill);
 	});
 }

@@ -63,7 +63,7 @@ shared_ptr<ofAppBaseWindow> ofMainLoop::createWindow(const ofWindowSettings & se
 	return window;
 }
 
-void ofMainLoop::run(shared_ptr<ofAppBaseWindow> window, shared_ptr<ofBaseApp> app){
+void ofMainLoop::run(shared_ptr<ofAppBaseWindow> window, shared_ptr<ofBaseApp> && app){
 	windowsApps[window] = app;
 	if(app){
 		ofAddListener(window->events().setup,app.get(),&ofBaseApp::setup,OF_EVENT_ORDER_APP);
@@ -110,9 +110,9 @@ void ofMainLoop::run(shared_ptr<ofAppBaseWindow> window, shared_ptr<ofBaseApp> a
 	}
 }
 
-void ofMainLoop::run(shared_ptr<ofBaseApp> app){
+void ofMainLoop::run(std::shared_ptr<ofBaseApp> && app){
 	if(!windowsApps.empty()){
-		run(windowsApps.begin()->first,app);
+		run(windowsApps.begin()->first, std::move(app));
 	}
 }
 
@@ -150,6 +150,8 @@ void ofMainLoop::pollEvents(){
 }
 
 void ofMainLoop::exit(){
+	exitEvent.notify(this);
+
 	for(auto i: windowsApps){
 		shared_ptr<ofAppBaseWindow> window = i.first;
 		shared_ptr<ofBaseApp> app = i.second;
@@ -160,7 +162,10 @@ void ofMainLoop::exit(){
 		if(app == nullptr) {
 			continue;
 		}
-		
+
+		ofEventArgs args;
+		ofNotifyEvent(window->events().exit, args, this);
+
 		ofRemoveListener(window->events().setup,app.get(),&ofBaseApp::setup,OF_EVENT_ORDER_APP);
 		ofRemoveListener(window->events().update,app.get(),&ofBaseApp::update,OF_EVENT_ORDER_APP);
 		ofRemoveListener(window->events().draw,app.get(),&ofBaseApp::draw,OF_EVENT_ORDER_APP);
@@ -198,8 +203,14 @@ void ofMainLoop::exit(){
 		}
 #endif
 	}
-	
-	exitEvent.notify(this);
+
+
+	// reset applications then windows
+	// so events are present until the
+	// end of the application
+	for(auto & window_app: windowsApps){
+		window_app.second.reset();
+	}
 	windowsApps.clear();
 }
 

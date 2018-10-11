@@ -47,9 +47,36 @@ enum ofTargetPlatform{
 	OF_TARGET_EMSCRIPTEN
 };
 
+// core: ---------------------------
+#include <cstdio>
+#include <cstdarg>
+#include <cmath>
+#include <ctime>
+#include <cstdlib>
+#include <string>
+#include <iostream>
+#include <vector>
+#include <cstring>
+#include <sstream>  //for ostringsream
+#include <iomanip>  //for setprecision
+#include <fstream>
+#include <algorithm>
+#include <cfloat>
+#include <map>
+#include <stack>
+#include <unordered_map>
+#include <memory>
+
+#define GLM_META_PROG_HELPERS
+#define GLM_SWIZZLE
+#define GLM_FORCE_SIZE_FUNC
+#include "glm/glm.hpp"
+#include "glm/ext.hpp"
+
 #ifndef OF_TARGET_IPHONE
     #define OF_TARGET_IPHONE OF_TARGET_IOS
 #endif 
+
 
 // Cross-platform deprecation warning
 #ifdef __GNUC__
@@ -125,8 +152,7 @@ enum ofTargetPlatform{
 	#define GLEW_STATIC
 	#define GLEW_NO_GLU
 	#include "GL/glew.h"
-	#include "GL/wglew.h"
-   	#include "glu.h"
+    #include "GL/wglew.h"
 	#define __WINDOWS_DS__
 	#define __WINDOWS_MM__
 	#if (_MSC_VER)       // microsoft visual studio
@@ -283,8 +309,11 @@ typedef TESSindex ofIndexType;
 		//on 10.6 and below we can use the old grabber
 		#ifndef MAC_OS_X_VERSION_10_7
 			#define OF_VIDEO_CAPTURE_QUICKTIME
-		#else
+		//if we are below 10.12 or targeting below 10.12 we use QTKit
+		#elif !defined(MAC_OS_X_VERSION_10_12) || MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_12
 			#define OF_VIDEO_CAPTURE_QTKIT
+		#else
+			#define OF_VIDEO_CAPTURE_AVF
         #endif
 
 	#elif defined (TARGET_WIN32)
@@ -384,7 +413,7 @@ typedef TESSindex ofIndexType;
 // on c++11, this is a workaround that bug
 #ifndef HAS_TLS
 	#if defined(__clang__) && __clang__
-		#if __has_feature(cxx_thread_local) && !defined(__MINGW64__) && !defined(__MINGW32__) && !defined(__ANDROID__)
+		#if __has_feature(cxx_thread_local) && !defined(__MINGW64__) && !defined(__MINGW32__) && !defined(__ANDROID__) && !defined(TARGET_OF_IOS)
 			#define HAS_TLS 1
 		#endif
     #elif !defined(TARGET_WIN32) || _MSC_VER
@@ -401,30 +430,7 @@ typedef ofBaseApp ofSimpleApp;
 #define OF_SERIAL_NO_DATA 	-2
 #define OF_SERIAL_ERROR		-1
 
-// core: ---------------------------
-#include <cstdio>
-#include <cstdarg>
-#include <cmath>
-#include <ctime>
-#include <cstdlib>
-#include <string>
-#include <iostream>
-#include <vector>
-#include <cstring>
-#include <sstream>  //for ostringsream
-#include <iomanip>  //for setprecision
-#include <fstream>
-#include <algorithm>
-#include <cfloat>
-#include <map>
-#include <stack>
-#include <unordered_map>
-#include <memory>
 
-#include "json.hpp"
-
-// for convenience
-using ofJson = nlohmann::json;
 
 using namespace std;
 
@@ -918,12 +924,28 @@ enum ofDrawBitmapMode{
 	OF_BITMAPMODE_MODEL_BILLBOARD
 };
 
-/// \brief Sets the text encoding mode.
-/// 
-/// This is not currently used in the codebase, but the
-/// assumption is that will once again begin using this as we
-/// continue to work on our UTF8 implementation.
-enum ofTextEncoding{
-	OF_ENCODING_UTF8,
-	OF_ENCODING_ISO_8859_15
-};
+//#define OF_USE_LEGACY_MESH
+template<class V, class N, class C, class T>
+class ofMesh_;
+class ofVec2f;
+class ofVec3f;
+class ofVec4f;
+
+template<typename T>
+class ofColor_;
+typedef ofColor_<float> ofFloatColor;
+
+#ifdef OF_USE_LEGACY_MESH
+using ofDefaultVec2 = ofVec2f;
+using ofDefaultVec3 = ofVec3f;
+using ofDefaultVec4 = ofVec4f;
+#else
+using ofDefaultVec2 = glm::vec2;
+using ofDefaultVec3 = glm::vec3;
+using ofDefaultVec4 = glm::vec4;
+#endif
+using ofDefaultVertexType = ofDefaultVec3;
+using ofDefaultNormalType = ofDefaultVec3;
+using ofDefaultColorType = ofFloatColor;
+using ofDefaultTexCoordType = ofDefaultVec2;
+

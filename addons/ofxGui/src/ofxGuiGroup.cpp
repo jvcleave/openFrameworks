@@ -20,7 +20,7 @@ ofxGuiGroup::ofxGuiGroup(const ofParameterGroup & parameters, const std::string&
 }
 
 ofxGuiGroup * ofxGuiGroup::setup(const std::string& collectionName, const std::string& filename, float x, float y){
-	parameters.setName(collectionName);
+	ofParameterGroup parameters(collectionName);
 	return setup(parameters, filename, x, y);
 }
 
@@ -74,13 +74,16 @@ ofxGuiGroup * ofxGuiGroup::setup(const ofParameterGroup & _parameters, const std
 		}else if(type == typeid(ofParameter <bool> ).name()){
 			auto p = _parameters.getBool(i);
 			add(p);
-		}else if(type == typeid(ofParameter <ofVec2f> ).name()){
+		}else if(type == typeid(ofParameter <void> ).name()){
+			auto p = _parameters.getVoid(i);
+			add(p);
+		}else if(type == typeid(ofParameter <ofDefaultVec2> ).name()){
 			auto p = _parameters.getVec2f(i);
 			add(p);
-		}else if(type == typeid(ofParameter <ofVec3f> ).name()){
+		}else if(type == typeid(ofParameter <ofDefaultVec3> ).name()){
 			auto p = _parameters.getVec3f(i);
 			add(p);
-		}else if(type == typeid(ofParameter <ofVec4f> ).name()){
+		}else if(type == typeid(ofParameter <ofDefaultVec4> ).name()){
 			auto p = _parameters.getVec4f(i);
 			add(p);
 		}else if(type == typeid(ofParameter <ofColor> ).name()){
@@ -159,6 +162,10 @@ void ofxGuiGroup::add(const ofParameterGroup & parameters){
 	add(panel);
 }
 
+void ofxGuiGroup::add(ofParameter <void> & parameter){
+	add(new ofxButton(parameter, b.width));
+}
+
 void ofxGuiGroup::add(ofParameter <bool> & parameter){
 	add(new ofxToggle(parameter, b.width));
 }
@@ -177,6 +184,18 @@ void ofxGuiGroup::add(ofParameter <ofVec3f> & parameter){
 
 void ofxGuiGroup::add(ofParameter <ofVec4f> & parameter){
 	add(new ofxVecSlider_ <ofVec4f>(parameter, b.width));
+}
+
+void ofxGuiGroup::add(ofParameter <glm::vec2> & parameter){
+	add(new ofxVecSlider_ <glm::vec2>(parameter, b.width));
+}
+
+void ofxGuiGroup::add(ofParameter <glm::vec3> & parameter){
+	add(new ofxVecSlider_ <glm::vec3>(parameter, b.width));
+}
+
+void ofxGuiGroup::add(ofParameter <glm::vec4> & parameter){
+	add(new ofxVecSlider_ <glm::vec4>(parameter, b.width));
 }
 
 void ofxGuiGroup::add(ofParameter <ofColor> & parameter){
